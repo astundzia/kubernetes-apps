@@ -1,0 +1,8 @@
+apiVersion: v1
+data:
+  domain.crt: FFFF==
+  domain.key: FFFF 
+kind: Secret
+metadata:
+  name: docker-registry-cert
+  namespace: docker-registry 

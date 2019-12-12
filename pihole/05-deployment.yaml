@@ -1,0 +1,36 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: pihole 
+  namespace: pihole 
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: pihole 
+    spec:
+      containers:
+      - name: pihole
+        image: diginc/pi-hole
+        imagePullPolicy: Always
+        env:
+        - name: UID
+          value: "1000"
+        - name: TZ
+          value: "America/Chicago"
+        - name: ServerIP
+          value: "192.168.5.204"
+        - name: WEBPASSWORD
+          value: "password"
+        - name: DNS1
+          value: "192.168.5.207"
+        - name: DNS2
+          value: "192.168.5.1"
+        volumeMounts:
+        - name: pihole-config
+          mountPath: /etc/pihole
+      volumes:
+      - name: pihole-config
+        persistentVolumeClaim:
+          claimName: "pihole-config-dir"

@@ -1,0 +1,168 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: zipkin-collector
+  name: zipkin-collector
+  namespace: zipkin
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: zipkin-collector
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 2
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: zipkin-collector
+    spec:
+      containers:
+      - env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: QUERY_PORT
+          value: "9411"
+        - name: JAVA_OPTS
+          value: -XX:ConcGCThreads=2 -XX:ParallelGCThreads=2 -Djava.util.concurrent.ForkJoinPool.common.parallelism=2
+            -Xms900M -Xmx900M -XX:+UseG1GC -server
+        - name: COLLECTOR_SAMPLE_RATE
+          value: "1e-07"
+        - name: QUERY_ENABLED
+          value: "false"
+        - name: STORAGE_TYPE
+          value: cassandra
+        - name: CASSANDRA_USERNAME
+          value: cassandra 
+        - name: CASSANDRA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: cassandra.password
+              name: zipkin
+        - name: CASSANDRA_CONTACT_POINTS
+          value: placeholder
+        - name: CASSANDRA_LOCAL_DC
+          value: placeholder
+        - name: CASSANDRA_ENSURE_SCHEMA
+          value: "false"
+        image: docker.io/openzipkin/zipkin:1.28.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 9411
+          timeoutSeconds: 1
+        name: zipkin-helm
+        ports:
+        - containerPort: 9411
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 9411
+            scheme: HTTP
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 200m
+            memory: 900Mi
+          requests:
+            cpu: 150m
+            memory: 900Mi
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: zipkin-ui
+  name: zipkin-ui
+  namespace: zipkin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zipkin-ui
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 2
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: zipkin-ui
+        release: zipkin
+    spec:
+      containers:
+      - env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: QUERY_PORT
+          value: "9411"
+        - name: JAVA_OPTS
+          value: -XX:ConcGCThreads=2 -XX:ParallelGCThreads=2 -Djava.util.concurrent.ForkJoinPool.common.parallelism=2
+            -Xms900M -Xmx900M -XX:+UseG1GC -server
+        - name: QUERY_ENABLED
+          value: "true"
+        - name: STORAGE_TYPE
+          value: cassandra
+        - name: CASSANDRA_USERNAME
+          value: placeholder
+        - name: CASSANDRA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: cassandra.password
+              name: zipkin
+        - name: CASSANDRA_CONTACT_POINTS
+          value: placeholder
+        - name: CASSANDRA_LOCAL_DC
+          value: placeholder
+        - name: CASSANDRA_ENSURE_SCHEMA
+          value: "false"
+        image: docker.io/openzipkin/zipkin:1.28.1
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          successThreshold: 1
+          tcpSocket:
+            port: 9411
+          timeoutSeconds: 1
+        name: zipkin-helm
+        ports:
+        - containerPort: 9411
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /health
+            port: 9411
+            scheme: HTTP
+          initialDelaySeconds: 150
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 200m
+            memory: 900Mi
+          requests:
+            cpu: 150m
+            memory: 900Mi

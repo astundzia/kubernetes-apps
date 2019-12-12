@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: artifactory
+    component: artifactory
+  name: artifactory
+  namespace: artifactory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artifactory
+  serviceName: artifactory
+  template:
+    metadata:
+      labels:
+        app: artifactory
+        component: artifactory
+    spec:
+      containers:
+      - command:
+        - /bin/sh
+        - -c
+        - |
+          /entrypoint-artifactory.sh
+        env:
+        - name: DB_TYPE
+          value: postgresql
+        - name: DB_HOST
+          value: artifactory-postgresql
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: artifactory
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: postgres-password
+              name: artifactory-postgresql
+        - name: ARTIFACTORY_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              key: master-key
+              name: artifactory
+        - name: EXTRA_JAVA_OPTIONS
+          value: ' '
+        image: docker.bintray.io/jfrog/artifactory-oss:6.8.7
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - ""
+        name: artifactory
+        ports:
+        - containerPort: 8081
+          protocol: TCP
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          procMount: Default
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+        - mountPath: /artifactory_extra_conf/binarystore.xml
+          name: binarystore-xml
+          subPath: binarystore.xml
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - rm -rfv /var/opt/jfrog/artifactory/lost+found /var/opt/jfrog/artifactory/data/.lock
+        image: alpine:3.8
+        imagePullPolicy: IfNotPresent
+        name: remove-lost-found
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/artifactory
+          name: artifactory-volume
+      - command:
+        - sh
+        - -c
+        - |
+          until nc -z -w 2 artifactory-postgresql 5432 && echo database ok; do
+            sleep 2;
+          done;
+        image: alpine:3.8
+        imagePullPolicy: IfNotPresent
+        name: wait-for-db
+      securityContext:
+        fsGroup: 1030
+        runAsUser: 1030
+      volumes:
+      - name: artifactory-volume
+        persistentVolumeClaim:
+          claimName: artifactory-data-dir
+      - configMap:
+          defaultMode: 420
+          name: artifactory-bs
+        name: binarystore-xml
+  updateStrategy:
+    type: RollingUpdate

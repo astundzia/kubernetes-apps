@@ -1,0 +1,41 @@
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: clean-spans 
+  namespace: jaeger
+spec:
+  schedule: "0 0 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: clean-spans
+            image: jaegertracing/jaeger-es-index-cleaner:1.11.0
+            args: ["$(NUM_OF_DAYS)", "http://$(HOSTNAME):$(PORT)"]
+            env:
+            - name: NUM_OF_DAYS
+              value: "90"
+            - name: HOSTNAME
+              value: "jaeger-elasticsearch-client"
+            - name: PORT
+              value: "9200"
+            - name: TIMEOUT
+              value: "240"
+            - name: ES_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  key: es.password
+                  name: jaeger
+            - name: ES_SERVER_URLS
+              valueFrom:
+                configMapKeyRef:
+                  key: es.server-urls
+                  name: jaeger
+            - name: ES_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  key: es.username
+                  name: jaeger
+

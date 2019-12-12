@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+    component: alertmanager
+  name: prometheus-alertmanager
+  namespace: monitoring 
+spec:
+  ports:
+  - name: http
+    port: 9093
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: alertmanager
+  type: ClusterIP 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+  labels:
+    app: prometheus
+    component: kube-state-metrics
+  name: prometheus-kube-state-metrics
+  namespace: monitoring 
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: kube-state-metrics
+  type: ClusterIP 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+  labels:
+    app: prometheus
+    component: node-exporter
+  name: prometheus-node-exporter
+  namespace: monitoring 
+spec:
+  ports:
+  - name: metrics
+    port: 9100
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: node-exporter
+    release: prometheus
+  type: ClusterIP 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/probe: pushgateway
+  labels:
+    app: prometheus
+    component: pushgateway
+  name: prometheus-pushgateway
+  namespace: monitoring 
+spec:
+  ports:
+  - name: http
+    port: 9091
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: pushgateway
+  type: ClusterIP 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus
+    component: server
+  name: prometheus-server
+  namespace: monitoring 
+spec:
+  ports:
+  - name: http
+    port: 9090 
+    protocol: TCP
+  selector:
+    app: prometheus
+    component: server
+  type: ClusterIP 
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: prometheus 
+    component: nginx
+  name: prometheus
+  namespace: monitoring 
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 443
+  selector:
+    app: prometheus 
+    component: nginx
+  type: LoadBalancer
+  loadBalancerIP: 192.168.5.214
+

@@ -1,0 +1,183 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: artifactory
+    component: nginx
+  name: artifactory-nginx
+  namespace: artifactory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artifactory
+      component: nginx
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: artifactory
+        component: nginx
+    spec:
+      containers:
+      - env:
+        - name: ART_BASE_URL
+          value: http://artifactory:8081/artifactory
+        - name: SSL
+          value: "true"
+        - name: SKIP_AUTO_UPDATE_CONFIG
+          value: "false"
+        image: docker.bintray.io/jfrog/nginx-artifactory-pro:6.8.7
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                until [ -f /etc/nginx/conf.d/artifactory.conf ]; do sleep 1; done; if ! grep -q 'upstream' /etc/nginx/conf.d/artifactory.conf; then sed -i -e 's,proxy_pass.*http://artifactory.*/artifactory/\(.*\);,proxy_pass       http://artifactory:8081/artifactory/\1;,g' \
+                    -e 's,server_name .*,server_name ~(?<repo>.+)\\.artifactory artifactory;,g' \
+                    /etc/nginx/conf.d/artifactory.conf;
+                fi; if [ -f /tmp/replicator-nginx.conf ]; then cp -fv /tmp/replicator-nginx.conf /etc/nginx/conf.d/replicator-nginx.conf; fi; if [ -f /tmp/ssl/*.crt ]; then rm -rf /var/opt/jfrog/nginx/ssl/example.*; cp -fv /tmp/ssl/* /var/opt/jfrog/nginx/ssl; fi; sleep 5; nginx -s reload; touch /var/log/nginx/conf.done
+        livenessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /artifactory/webapp/#/login
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 10
+        name: nginx
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        - containerPort: 443
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /artifactory/webapp/#/login
+            port: 80
+            scheme: HTTP
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 10
+        volumeMounts:
+        - mountPath: /var/opt/jfrog/nginx
+          name: nginx-volume
+        - name: cert-volume
+          readOnly: true
+          mountPath: /var/opt/jfrog/nginx/ssl
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          until nc -z -w 2 artifactory 8081 && echo artifactory ok; do
+            sleep 2;
+          done;
+        image: alpine:3.8
+        imagePullPolicy: IfNotPresent
+        name: wait-for-artifactory
+      securityContext:
+        fsGroup: 107
+        runAsUser: 104
+      volumes:
+      - emptyDir: {}
+        name: nginx-volume
+      - name: cert-volume
+        secret:
+          secretName: artifactory-cert
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: artifactory-postgresql
+  name: artifactory-postgresql
+  namespace: artifactory
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artifactory-postgresql
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: artifactory-postgresql
+    spec:
+      containers:
+      - args:
+        - -c
+        - max_connections=1500
+        env:
+        - name: POSTGRES_USER
+          value: artifactory
+        - name: PGUSER
+          value: artifactory
+        - name: POSTGRES_DB
+          value: artifactory
+        - name: POSTGRES_INITDB_ARGS
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: postgres-password
+              name: artifactory-postgresql
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        image: postgres:9.6.11
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready --host $POD_IP
+          failureThreshold: 6
+          initialDelaySeconds: 120
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: artifactory-postgresql
+        ports:
+        - containerPort: 5432
+          name: postgresql
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready --host $POD_IP
+          failureThreshold: 3
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 3
+        volumeMounts:
+        - mountPath: /var/lib/postgresql/data/pgdata
+          name: data
+          subPath: postgresql-db
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: artifactory-postgres-dir
+---

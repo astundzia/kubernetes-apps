@@ -1,0 +1,217 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: postgresql
+  name: postgresql
+  namespace: postgresql
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+      role: master
+  serviceName: postgresql-headless
+  template:
+    metadata:
+      labels:
+        app: postgresql
+        role: master
+      name: postgresql
+    spec:
+      containers:
+      - env:
+        - name: POSTGRESQL_REPLICATION_MODE
+          value: master 
+        - name: POSTGRESQL_REPLICATION_USER
+          value: repl_user
+        - name: POSTGRESQL_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: postgresql-replication-password
+              name: postgresql-secret
+        - name: POSTGRESQL_USERNAME
+          value: postgres
+        - name: POSTGRESQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: postgresql-password
+              name: postgresql-secret
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        image: docker.io/bitnami/postgresql:10.6.0
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U "postgres" --host $POD_IP
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: postgresql
+        ports:
+        - containerPort: 5432
+          name: postgresql
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U "postgres" --host $POD_IP
+          failureThreshold: 6
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /bitnami/postgresql
+          name: data
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          chown -R 1001:1001 /bitnami
+          if [ -d /bitnami/postgresql/data ]; then
+            chmod  0700 /bitnami/postgresql/data;
+          fi
+        image: docker.io/bitnami/minideb:latest
+        imagePullPolicy: Always
+        name: init-chmod-data
+        volumeMounts:
+        - mountPath: /bitnami/postgresql
+          name: data
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+  updateStrategy:
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 32Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: postgresql
+  name: postgresql-slave
+  namespace: postgresql
+spec:
+  podManagementPolicy: OrderedReady
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgresql
+      role: slave
+  serviceName: postgresql-headless
+  template:
+    metadata:
+      labels:
+        app: postgresql
+        role: slave
+      name: postgresql
+    spec:
+      containers:
+      - env:
+        - name: POSTGRESQL_REPLICATION_MODE
+          value: slave
+        - name: POSTGRESQL_REPLICATION_USER
+          value: repl_user
+        - name: POSTGRESQL_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: postgresql-replication-password
+              name: postgresql-secret
+        - name: POSTGRESQL_CLUSTER_APP_NAME
+          value: my_application
+        - name: POSTGRESQL_MASTER_HOST
+          value: postgresql
+        - name: POSTGRESQL_MASTER_PORT_NUMBER
+          value: "5432"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        image: docker.io/bitnami/postgresql:10.6.0
+        imagePullPolicy: Always
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U "postgres" --host $POD_IP
+          failureThreshold: 6
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: postgresql-postgresql
+        ports:
+        - containerPort: 5432
+          name: postgresql
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - exec pg_isready -U "postgres" --host $POD_IP
+          failureThreshold: 6
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+        volumeMounts:
+        - mountPath: /bitnami/postgresql
+          name: data
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - |
+          chown -R 1001:1001 /bitnami
+          if [ -d /bitnami/postgresql/data ]; then
+            chmod  0700 /bitnami/postgresql/data;
+          fi
+        image: docker.io/bitnami/minideb:latest
+        imagePullPolicy: Always
+        name: init-chmod-data
+        volumeMounts:
+        - mountPath: /bitnami/postgresql
+          name: data
+  updateStrategy:
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 32Gi
+

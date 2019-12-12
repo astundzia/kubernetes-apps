@@ -1,0 +1,13 @@
+apiVersion: v1
+data:
+  binarystore.xml: |-
+    <!-- File system replication -->
+    <config version="v1">
+        <chain template="file-system"/>
+    </config>
+kind: ConfigMap
+metadata:
+  labels:
+    app: artifactory
+  name: artifactory-bs
+  namespace: artifactory

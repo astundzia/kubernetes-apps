@@ -1,0 +1,334 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/instance: jaeger
+    app.kubernetes.io/name: jaeger
+  name: jaeger-collector
+  namespace: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: collector
+      app.kubernetes.io/instance: jaeger
+      app.kubernetes.io/name: jaeger
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: collector
+        app.kubernetes.io/instance: jaeger
+        app.kubernetes.io/name: jaeger
+    spec:
+      containers:
+      - env:
+        - name: SPAN_STORAGE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              key: span-storage.type
+              name: jaeger
+        - name: ES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              key: es.password
+              name: jaeger
+        - name: ES_SERVER_URLS
+          valueFrom:
+            configMapKeyRef:
+              key: es.server-urls
+              name: jaeger
+        - name: ES_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              key: es.username
+              name: jaeger
+        - name: COLLECTOR_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: collector.port
+              name: jaeger
+        - name: COLLECTOR_HTTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: collector.http-port
+              name: jaeger
+        - name: COLLECTOR_ZIPKIN_HTTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: collector.zipkin.http-port
+              name: jaeger
+        image: jaegertracing/jaeger-collector:1.10.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: healthcheck
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: jaeger-collector
+        ports:
+        - containerPort: 14267
+          name: tchannel
+          protocol: TCP
+        - containerPort: 14268
+          name: http
+          protocol: TCP
+        - containerPort: 14269
+          name: healthcheck
+          protocol: TCP
+        - containerPort: 9411
+          name: zipkin
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: healthcheck
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: query
+    app.kubernetes.io/instance: jaeger
+    app.kubernetes.io/name: jaeger
+  name: jaeger-query
+  namespace: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: query
+      app.kubernetes.io/instance: jaeger
+      app.kubernetes.io/name: jaeger
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: query
+        app.kubernetes.io/instance: jaeger
+        app.kubernetes.io/name: jaeger
+    spec:
+      containers:
+      - env:
+        - name: SPAN_STORAGE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              key: span-storage.type
+              name: jaeger
+        - name: ES_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              key: es.password
+              name: jaeger
+        - name: ES_SERVER_URLS
+          valueFrom:
+            configMapKeyRef:
+              key: es.server-urls
+              name: jaeger
+        - name: ES_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              key: es.username
+              name: jaeger
+        - name: QUERY_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: query.port
+              name: jaeger
+        - name: QUERY_HEALTH_CHECK_HTTP_PORT
+          valueFrom:
+            configMapKeyRef:
+              key: query.health-check-http-port
+              name: jaeger
+        - name: QUERY_BASE_PATH
+          valueFrom:
+            configMapKeyRef:
+              key: query.base-path
+              name: jaeger
+        image: jaegertracing/jaeger-query:1.10.0
+        imagePullPolicy: IfNotPresent
+        name: jaeger-query
+        ports:
+        - containerPort: 16686
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /
+            port: 16687
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: jaeger-nginx
+  namespace: jaeger
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: jaeger
+        component: nginx
+    spec:
+      containers:
+      - name: jaeger-nginx
+        image: nginx:1.15.9-alpine
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+          name: http
+        - containerPort: 443
+          name: https
+        volumeMounts:
+        - name: cert-volume
+          readOnly: true
+          mountPath: /cert
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+        - name: nginx-options-config
+          mountPath: /etc/nginx/ssl.d
+      volumes:
+      - name: cert-volume
+        secret:
+          secretName: jaeger-cert
+      - name: nginx-config
+        configMap:
+          defaultMode: 420
+          name: nginx-config
+      - name: nginx-options-config
+        configMap:
+          defaultMode: 420
+          name: nginx-options-config
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    app: elasticsearch
+    component: client
+    release: jaeger
+  name: jaeger-elasticsearch-client
+  namespace: jaeger
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: elasticsearch
+      component: client
+      release: jaeger
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+        component: client
+        release: jaeger
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: elasticsearch
+                  component: client
+                  release: jaeger
+              topologyKey: kubernetes.io/hostname
+            weight: 1
+      containers:
+      - env:
+        - name: NODE_DATA
+          value: "false"
+        - name: NODE_MASTER
+          value: "false"
+        - name: DISCOVERY_SERVICE
+          value: jaeger-elasticsearch-discovery
+        - name: PROCESSORS
+          valueFrom:
+            resourceFieldRef:
+              divisor: "0"
+              resource: limits.cpu
+        - name: ES_JAVA_OPTS
+          value: '-Djava.net.preferIPv4Stack=true -Xms512m -Xmx512m  '
+        - name: MINIMUM_MASTER_NODES
+          value: "2"
+        image: docker.elastic.co/elasticsearch/elasticsearch:6.7.0
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /_cluster/health?local=true
+            port: 9200
+            scheme: HTTP
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: elasticsearch
+        ports:
+        - containerPort: 9200
+          name: http
+          protocol: TCP
+        - containerPort: 9300
+          name: transport
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /_cluster/health
+            port: 9200
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: "1"
+          requests:
+            cpu: 25m
+            memory: 512Mi
+        volumeMounts:
+        - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+          name: config
+          subPath: elasticsearch.yml
+      initContainers:
+      - command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        image: busybox:latest
+        imagePullPolicy: Always
+        name: sysctl
+        securityContext:
+          privileged: true
+          procMount: Default
+      serviceAccount: jaeger-elasticsearch-client
+      serviceAccountName: jaeger-elasticsearch-client
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: jaeger-elasticsearch
+        name: config

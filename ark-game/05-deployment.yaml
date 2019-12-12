@@ -1,0 +1,36 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: ark 
+  namespace: ark 
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: ark 
+    spec:
+      containers:
+      - name: ark 
+        image: astundzia/ark-docker:latest
+        imagePullPolicy: Always
+        env:
+        - name: UID
+          value: "1000"
+        - name: GID
+          value: "1000"
+        - name: SESSIONNAME
+          value: "Ark Server"
+        - name: ADMINPASSWORD
+          value: "alex12"
+        - name: SERVER_MODS
+          value: "731604991,708807240,693416678,630601751,538827119,730794403,756389708,640022028,640032948,566887000,554678442,760067652,671591278,592595740,821530042,686599588"
+        - name: SERVERMAP
+          value: "TheCenter"
+        volumeMounts:
+        - name: ark-dir 
+          mountPath: /ark
+      volumes:
+      - name: ark-dir
+        persistentVolumeClaim:
+          claimName: "ark-game-dir"

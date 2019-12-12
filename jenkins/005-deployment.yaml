@@ -1,0 +1,136 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  labels:
+    component: jenkins-master
+  name: jenkins
+  namespace: jenkins
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      containers:
+      - args:
+        - --argumentsRealm.passwd.$(ADMIN_USER)=$(ADMIN_PASSWORD)
+        - --argumentsRealm.roles.$(ADMIN_USER)=admin
+        env:
+        - name: JAVA_OPTS
+        - name: JENKINS_OPTS
+          value: "--httpsPort=8443 --httpsKeyStore=/certs/jenkins.keystore --httpsKeyStorePassword=changeit"
+        - name: JENKINS_SLAVE_AGENT_PORT
+          value: "50000"
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: jenkins-admin-password
+              name: jenkins
+        - name: ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              key: jenkins-admin-user
+              name: jenkins
+        image: jenkins/jenkins:lts
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 12
+          httpGet:
+            path: /login
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: jenkins
+        ports:
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        - containerPort: 50000
+          name: slavelistener
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /login
+            port: https
+            scheme: HTTPS
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /var/jenkins_home
+          name: jenkins-home
+        - mountPath: /var/jenkins_config
+          name: jenkins-config
+          readOnly: true
+        - mountPath: /usr/share/jenkins/ref/plugins/
+          name: plugin-dir
+        - mountPath: /usr/share/jenkins/ref/secrets/
+          name: secrets-dir
+        - name: cert-volume
+          readOnly: true
+          mountPath: /certs
+      initContainers:
+      - command:
+        - sh
+        - /var/jenkins_config/apply_config.sh
+        env:
+        - name: ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: jenkins-admin-password
+              name: jenkins
+        - name: ADMIN_USER
+          valueFrom:
+            secretKeyRef:
+              key: jenkins-admin-user
+              name: jenkins
+        image: jenkins/jenkins:lts
+        imagePullPolicy: Always
+        name: copy-default-config
+        volumeMounts:
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /var/jenkins_home
+          name: jenkins-home
+        - mountPath: /var/jenkins_config
+          name: jenkins-config
+        - mountPath: /usr/share/jenkins/ref/plugins
+          name: plugins
+        - mountPath: /var/jenkins_plugins
+          name: plugin-dir
+        - mountPath: /usr/share/jenkins/ref/secrets/
+          name: secrets-dir
+        - name: cert-volume
+          readOnly: true
+          mountPath: /certs
+      securityContext:
+        runAsUser: 0
+      volumes:
+      - emptyDir: {}
+        name: plugins
+      - emptyDir: {}
+        name: tmp
+      - configMap:
+          defaultMode: 420
+          name: jenkins
+        name: jenkins-config
+      - name: plugin-dir
+        persistentVolumeClaim:
+          claimName: jenkins-plugins-dir
+      - name: secrets-dir
+        persistentVolumeClaim:
+          claimName: jenkins-secrets-dir
+      - name: jenkins-home
+        persistentVolumeClaim:
+          claimName: jenkins-home-dir
+      - name: cert-volume
+        secret:
+          secretName: jenkins-cert

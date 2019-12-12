@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: docker-registry
+  name: docker-registry
+  namespace: docker-registry
+spec:
+  ports:
+  - name: registry-https
+    port: 443
+    protocol: TCP
+    targetPort: 8443
+  selector:
+    app: docker-registry
+  type: LoadBalancer 
+  loadBalancerIP: 192.168.5.216
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: docker-ui
+  name: docker-ui
+  namespace: docker-registry
+spec:
+  ports:
+  - name: docker-ui-http 
+    port: 80 
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: docker-ui
+  type: LoadBalancer
+  loadBalancerIP: 192.168.5.215
+
